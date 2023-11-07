@@ -38,6 +38,12 @@ async function run() {
       res.send(result);
     })
 
+    app.post('/jobs', async (req, res) => {
+      const newJob = req.body;
+      const result = await jobCollection.insertOne(newJob)
+      res.send(result)
+    })
+
     app.get('/jobs/:id', async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -50,11 +56,11 @@ async function run() {
       res.send(result);
     })
 
-    app.post('/applicants', async(req, res)=>{
+    app.post('/applicants', async (req, res) => {
       const newApplicant = req.body;
       const result = await applicantCollection.insertOne(newApplicant)
       res.send(result)
-  })
+    })
 
 
     // Send a ping to confirm a successful connection

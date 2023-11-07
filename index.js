@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config();
 const app = express();
@@ -29,19 +30,32 @@ async function run() {
     await client.connect();
 
     const jobCollection = client.db('jobHunt').collection('jobs');
+    const applicantCollection = client.db('jobHunt').collection('applicants');
 
-    app.get('/jobs', async(req, res) => {
-        const cursor = s=jobCollection.find();
-        const result = await cursor.toArray();
-        res.send(result);
+    app.get('/jobs', async (req, res) => {
+      const cursor = jobCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
     })
 
-    app.get('/jobs/:id', async(req, res)=>{
-        const id = req.params.id;
-        const query = {_id: new ObjectId(id)};
-        const result = await jobCollection.findOne(query);
-        res.send(result);
+    app.get('/jobs/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await jobCollection.findOne(query);
+      res.send(result);
     })
+    app.get('/applicants', async (req, res) => {
+      const cursor = applicantCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    })
+
+    app.post('/applicants', async(req, res)=>{
+      const newApplicant = req.body;
+      const result = await applicantCollection.insertOne(newApplicant)
+      res.send(result)
+  })
+
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
@@ -55,9 +69,9 @@ run().catch(console.dir);
 
 
 app.get('/', (req, res) => {
-    res.send('job-hunt is running')
+  res.send('job-hunt is running')
 });
 
 app.listen(port, () => {
-    console.log(`job-hunt server is running on port:${port}`)
+  console.log(`job-hunt server is running on port:${port}`)
 });

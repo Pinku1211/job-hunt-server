@@ -12,7 +12,8 @@ const port = process.env.PORT || 5000;
 
 app.use(cors({
   origin: [
-    'http://localhost:5173'
+    'https://job-hunt-f101c.web.app',
+    'job-hunt-f101c.firebaseapp.com'
   ],
   credentials: true
 }));
@@ -20,7 +21,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.r8pib.mongodb.net/?retryWrites=true&w=majority`;
+const uri = `mongodb+srv://${process.env.DB_USERS}:${process.env.DB_PASSW}@cluster0.r8pib.mongodb.net/?retryWrites=true&w=majority`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -42,7 +43,7 @@ const verifyToken = (req, res, next) => {
   if(!token){
     return res.status(401).send({message: 'unauthorized access'})
   }
-  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+  jwt.verify(token, process.env.ACCESS_TOKEN, (err, decoded) => {
     if(err){
       return res.status(401).send({message: 'unauthorized access'})
     }
@@ -55,7 +56,7 @@ const verifyToken = (req, res, next) => {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
 
     const jobCollection = client.db('jobHunt').collection('jobs');
     const applicantCollection = client.db('jobHunt').collection('applicants');
@@ -64,7 +65,7 @@ async function run() {
     app.post('/jwt', logger, async(req, res)=>{
       const user = req.body;
       console.log('user for token', user);
-      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {expiresIn: '1h'})
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN, {expiresIn: '1h'})
       res.cookie('token', token, {
         httpOnly: true,
         secure: true,
@@ -93,7 +94,7 @@ async function run() {
       res.send(result)
     })
 
-    app.get('/jobs/:id', logger, verifyToken, async (req, res) => {
+    app.get('/jobs/:id', logger, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await jobCollection.findOne(query);
@@ -146,22 +147,6 @@ async function run() {
       const result = await jobCollection.updateOne(filter, job, options);
       res.send(result)
     })
-
-    // app.put('/jobs/:id', async (req, res) => {
-    //   const id = req.params.id;
-    //   const query = { _id: new ObjectId(id) };
-    //   const job = {
-    //     $inc: {
-    //       applicants_number: 1
-    //     }
-    //   }
-    //   const result = await jobCollection.updateOne(query, job);
-    //   res.send(result)
-    // })
-
-    
-
-
 
 
     // Send a ping to confirm a successful connection

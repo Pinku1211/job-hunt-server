@@ -13,7 +13,8 @@ const port = process.env.PORT || 5000;
 app.use(cors({
   origin: [
     'https://job-hunt-f101c.web.app',
-    'job-hunt-f101c.firebaseapp.com'
+    'https://job-hunt-f101c.firebaseapp.com'
+    
   ],
   credentials: true
 }));
@@ -62,7 +63,7 @@ async function run() {
     const applicantCollection = client.db('jobHunt').collection('applicants');
 
     // auth api
-    app.post('/jwt', logger, async(req, res)=>{
+    app.post('/jwt', async(req, res)=>{
       const user = req.body;
       console.log('user for token', user);
       const token = jwt.sign(user, process.env.ACCESS_TOKEN, {expiresIn: '1h'})
@@ -82,7 +83,7 @@ async function run() {
     })
 
     // services api
-    app.get('/jobs', logger, async (req, res) => {
+    app.get('/jobs', async (req, res) => {
       const cursor = jobCollection.find();
       const result = await cursor.toArray();
       res.send(result);
@@ -94,14 +95,44 @@ async function run() {
       res.send(result)
     })
 
-    app.get('/jobs/:id', logger, async (req, res) => {
+    app.get('/jobs/:id', async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await jobCollection.findOne(query);
       res.send(result);
     })
+    app.get('/applicants', logger, verifyToken, async(req, res) =>{
+      const cursor = applicantCollection.find();
+      const result = await cursor.toArray()
+      res.send(result)
+    });
 
-    app.get('/applicants', verifyToken, logger, async(req, res) => {
+    // app.get('/applicants/:id', async(req, res) => {
+    //   const id = req.params.id;
+    //   const query = {jobId: id}
+    //   const result1 = await applicantCollection.findOne(query)
+    //   const filter = {_id : new ObjectId(result1.jobId)}
+    //   const result2 = await jobCollection.findOne(filter)
+    //   res.send(result2)
+      
+    // })
+
+    app.put('/applicants/:id', async(req, res) => {
+      const id = req.params.id;
+      const query = {jobId: id}
+      const result1 = await applicantCollection.findOne(query)
+      const filter = {_id : new ObjectId(result1.jobId)}
+      const update = {
+        $inc: {
+          "applicants_number" : 1
+        }
+      }
+      const result = await jobCollection.updateOne(filter, update);
+      res.send(result)
+    })
+
+
+    app.get('/applicants', logger, verifyToken, async(req, res) => {
       let query = {};
       if(req.query?.email){
         query = {email: req.query.email}
@@ -147,6 +178,8 @@ async function run() {
       const result = await jobCollection.updateOne(filter, job, options);
       res.send(result)
     })
+
+    
 
 
     // Send a ping to confirm a successful connection

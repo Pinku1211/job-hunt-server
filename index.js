@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
 const cookieParser = require('cookie-parser')
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -12,9 +13,10 @@ const port = process.env.PORT || 5000;
 
 app.use(cors({
   origin: [
-    'https://job-hunt-f101c.web.app',
-    'https://job-hunt-f101c.firebaseapp.com'
-    
+    'http://localhost:5173',
+    // 'https://job-hunt-f101c.web.app',
+    // 'https://job-hunt-f101c.firebaseapp.com'
+
   ],
   credentials: true
 }));
@@ -35,18 +37,18 @@ const client = new MongoClient(uri, {
 
 // middlewares 
 const logger = (req, res, next) => {
-  console.log('log: info',req.method, req.url);
+  console.log('log: info', req.method, req.url);
   next();
 };
 
 const verifyToken = (req, res, next) => {
   const token = req?.cookies?.token;
-  if(!token){
-    return res.status(401).send({message: 'unauthorized access'})
+  if (!token) {
+    return res.status(401).send({ message: 'unauthorized access' })
   }
   jwt.verify(token, process.env.ACCESS_TOKEN, (err, decoded) => {
-    if(err){
-      return res.status(401).send({message: 'unauthorized access'})
+    if (err) {
+      return res.status(401).send({ message: 'unauthorized access' })
     }
     req.user = decoded;
     next();
@@ -61,24 +63,25 @@ async function run() {
 
     const jobCollection = client.db('jobHunt').collection('jobs');
     const applicantCollection = client.db('jobHunt').collection('applicants');
+    const userCollection = client.db('jobHunt').collection('users');
 
     // auth api
-    app.post('/jwt', async(req, res)=>{
+    app.post('/jwt', async (req, res) => {
       const user = req.body;
       console.log('user for token', user);
-      const token = jwt.sign(user, process.env.ACCESS_TOKEN, {expiresIn: '1h'})
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN, { expiresIn: '1h' })
       res.cookie('token', token, {
         httpOnly: true,
         secure: true,
         sameSite: 'none'
       })
-      .send({token})
+        .send({ token })
     })
 
-    app.post('/logout', async(req, res) => {
+    app.post('/logout', async (req, res) => {
       const user = req.body;
       console.log('logging out', user)
-      res.clearCookie('token', {maxAge: 0}).send({success: true})
+      res.clearCookie('token', { maxAge: 0 }).send({ success: true })
 
     })
 
@@ -88,115 +91,154 @@ async function run() {
       const result = await cursor.toArray();
       res.send(result);
     })
+    
 
     app.post('/jobs', async (req, res) => {
-      const newJob = req.body;
+      const newJob = req.body[0];
+      const subscribers = req.body[1]
+      sendEmailNotifications(subscribers, newJob);
       const result = await jobCollection.insertOne(newJob)
       res.send(result)
     })
-
-    app.get('/jobs/:id', async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const result = await jobCollection.findOne(query);
-      res.send(result);
-    })
-    app.get('/applicants', logger, verifyToken, async(req, res) =>{
-      const cursor = applicantCollection.find();
-      const result = await cursor.toArray()
-      res.send(result)
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.SMTP_MAIL,
+        pass: process.env.SMTP_PASSWORD ,
+      },
     });
-
-    // app.get('/applicants/:id', async(req, res) => {
-    //   const id = req.params.id;
-    //   const query = {jobId: id}
-    //   const result1 = await applicantCollection.findOne(query)
-    //   const filter = {_id : new ObjectId(result1.jobId)}
-    //   const result2 = await jobCollection.findOne(filter)
-    //   res.send(result2)
-      
-    // })
-
-    app.put('/applicants/:id', async(req, res) => {
-      const id = req.params.id;
-      const query = {jobId: id}
-      const result1 = await applicantCollection.findOne(query)
-      const filter = {_id : new ObjectId(result1.jobId)}
-      const update = {
-        $inc: {
-          "applicants_number" : 1
+    
+    const sendEmailNotifications = (subscribers, newJob) => {
+      const mailOptions = {
+        from: process.env.SMTP_MAIL,
+        to: subscribers,
+        subject: 'New Job Listing Alert',
+        text: `A new job "${newJob?.job_title}" has been added. Check it out!`,
+      };
+      transporter.sendMail(mailOptions, (error, info) => {
+        if (error) {
+          console.error(error);
+        } else {
+          console.log('Email sent: ' + info.response);
         }
-      }
-      const result = await jobCollection.updateOne(filter, update);
-      res.send(result)
-    })
-
-
-    app.get('/applicants', logger, verifyToken, async(req, res) => {
-      let query = {};
-      if(req.query?.email){
-        query = {email: req.query.email}
-      }
-      if(req.user.email !== req.query.email){
-        return res.status(403).send({message: 'forbidden access'})
-      }
-      const result = await applicantCollection.find(query).toArray();
-      res.send(result)
-    })
-
-    app.post('/applicants', logger, async (req, res) => {
-      const newApplicant = req.body;
-      const result = await applicantCollection.insertOne(newApplicant)
-      res.send(result)
-    })
-
-    app.delete('/jobs/:id', async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const result = await jobCollection.deleteOne(query)
-      res.send(result)
-    })
-
-    app.put('/jobs/:id', async (req, res) => {
-      const id = req.params.id;
-      const filter = { _id: new ObjectId(id) };
-      const options = { upsert: true };
-      const updatedJob = req.body;
-      const job = {
-        $set: {
-          job_banner: updatedJob.job_banner,
-          name_posted: updatedJob.name_posted,
-          job_title: updatedJob.job_title,
-          job_category: updatedJob.job_category,
-          salary_range: updatedJob.salary_range,
-          description: updatedJob.description,
-          job_posting_date: updatedJob.job_posting_date,
-          application_deadline: updatedJob.application_deadline,
-          applicants_number: updatedJob.applicants_number,
-        }
-      }
-      const result = await jobCollection.updateOne(filter, job, options);
-      res.send(result)
-    })
+      });
+    }
+    
 
     
 
+      app.get('/jobs/:id', async (req, res) => {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await jobCollection.findOne(query);
+        res.send(result);
+      })
 
-    // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
-  } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
+      // users
+      app.put('/users/:email', async (req, res) => {
+        const email = req.params.email
+        const user = req.body
+        const query = { email: email }
+        const options = { upsert: true }
+        const isExist = await userCollection.findOne(query)
+        console.log('User', isExist)
+        if (isExist) return res.send(isExist)
+        const result = await userCollection.updateOne(
+          query,
+          {
+            $set: { ...user, timestamp: Date.now() },
+          },
+          options
+        )
+        res.send(result)
+      })
+      app.get('/users', async (req, res) => {
+        const cursor = userCollection.find();
+        const result = await cursor.toArray();
+        res.send(result);
+      })
+
+      // applicants
+      app.put('/applicants/:id', async (req, res) => {
+        const id = req.params.id;
+        const query = { jobId: id }
+        const result1 = await applicantCollection.findOne(query)
+        const filter = { _id: new ObjectId(result1.jobId) }
+        const update = {
+          $inc: {
+            "applicants_number": 1
+          }
+        }
+        const result = await jobCollection.updateOne(filter, update);
+        res.send(result)
+      })
+
+
+      app.get('/applicants', async (req, res) => {
+        let query = {}
+        if (req.query) {
+          query = { email: req.query.email }
+        }
+        const result = await applicantCollection.find(query).toArray();
+
+        res.send(result)
+      })
+
+      app.post('/applicants', logger, async (req, res) => {
+        const newApplicant = req.body;
+        const result = await applicantCollection.insertOne(newApplicant)
+        res.send(result)
+      })
+
+      app.delete('/jobs/:id', async (req, res) => {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await jobCollection.deleteOne(query)
+        res.send(result)
+      })
+
+      app.put('/jobs/:id', async (req, res) => {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id) };
+        const options = { upsert: true };
+        const updatedJob = req.body;
+        const job = {
+          $set: {
+            job_banner: updatedJob.job_banner,
+            name_posted: updatedJob.name_posted,
+            job_title: updatedJob.job_title,
+            job_category: updatedJob.job_category,
+            salary_range: updatedJob.salary_range,
+            description: updatedJob.description,
+            job_posting_date: updatedJob.job_posting_date,
+            application_deadline: updatedJob.application_deadline,
+            applicants_number: parseInt(updatedJob.applicants_number),
+          }
+        }
+        const result = await jobCollection.updateOne(filter, job, options);
+        res.send(result)
+      })
+
+
+
+
+      // Send a ping to confirm a successful connection
+      await client.db("admin").command({ ping: 1 });
+      console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    } finally {
+      // Ensures that the client will close when you finish/error
+      // await client.close();
+    }
   }
-}
 run().catch(console.dir);
 
 
-app.get('/', (req, res) => {
-  res.send('job-hunt is running')
-});
+  app.get('/', (req, res) => {
+    res.send('job-hunt is running')
+  });
 
-app.listen(port, () => {
-  console.log(`job-hunt server is running on port:${port}`)
-});
+  app.listen(port, () => {
+    console.log(`job-hunt server is running on port:${port}`)
+  });

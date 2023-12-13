@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
+const multer = require('multer')
 const cookieParser = require('cookie-parser')
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -13,15 +14,15 @@ const port = process.env.PORT || 5000;
 
 app.use(cors({
   origin: [
-    'http://localhost:5173',
-    // 'https://job-hunt-f101c.web.app',
-    // 'https://job-hunt-f101c.firebaseapp.com'
+    // 'http://localhost:5174',
+    'https://job-hunt-f101c.web.app',
+    'https://job-hunt-f101c.firebaseapp.com'
 
   ],
-  credentials: true
 }));
 app.use(express.json());
 app.use(cookieParser());
+app.use("/files", express.static("files"))
 
 
 const uri = `mongodb+srv://${process.env.DB_USERS}:${process.env.DB_PASSW}@cluster0.r8pib.mongodb.net/?retryWrites=true&w=majority`;
@@ -36,10 +37,10 @@ const client = new MongoClient(uri, {
 });
 
 // middlewares 
-const logger = (req, res, next) => {
-  console.log('log: info', req.method, req.url);
-  next();
-};
+// const logger = (req, res, next) => {
+//   console.log('log: info', req.method, req.url);
+//   next();
+// };
 
 const verifyToken = (req, res, next) => {
   const token = req?.cookies?.token;
@@ -64,6 +65,7 @@ async function run() {
     const jobCollection = client.db('jobHunt').collection('jobs');
     const applicantCollection = client.db('jobHunt').collection('applicants');
     const userCollection = client.db('jobHunt').collection('users');
+    const pdfCollection = client.db('jobHunt').collection('pdfDetails');
 
     // auth api
     app.post('/jwt', async (req, res) => {
@@ -186,7 +188,7 @@ async function run() {
         res.send(result)
       })
 
-      app.post('/applicants', logger, async (req, res) => {
+      app.post('/applicants', async (req, res) => {
         const newApplicant = req.body;
         const result = await applicantCollection.insertOne(newApplicant)
         res.send(result)
@@ -221,8 +223,37 @@ async function run() {
         res.send(result)
       })
 
+      // upload cv
+      const storage = multer.diskStorage({
+        destination: function (req, file, cb) {
+          cb(null, './files'); 
+        },
+        filename: function (req, file, cb) {
+          const uniqueSuffix = Date.now()
+          cb(null, uniqueSuffix + file.originalname); 
+        },
+      });
 
+      
+      const upload = multer({storage: storage})
 
+      app.post('/upload-files', upload.single("file"), async(req, res) => {
+        console.log(req.file)
+        console.log(req.body)
+        const title = req.body.title
+        const email = req.body.email
+        const fileName = req.file?.filename
+        const result = await pdfCollection.insertOne({title: title, pdf: fileName, email: email })
+        res.send(result)
+       
+      })
+
+      // get all the resume
+      app.get('/get-files', async (req, res)=> {
+        const cursor = pdfCollection.find();
+        const result = await cursor.toArray();
+        res.send(result);
+      })
 
       // Send a ping to confirm a successful connection
       await client.db("admin").command({ ping: 1 });

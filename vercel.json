@@ -7,10 +7,19 @@
         }
     ],
     "routes": [
+        
         {
             "src": "/(.*)",
             "dest": "/",
             "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+        },
+        {
+            "src": "/upload-files",
+            "methods": ["POST"],
+            "dest": "/api/upload-files",
+            "headers": {
+                "Access-Control-Allow-Origin": "*"
+              }
         }
     ]
 }
